@@ -12,7 +12,6 @@ import android.os.HandlerThread;
 import android.provider.ContactsContract;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
-import android.support.v4.view.MenuItemCompat;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -25,11 +24,11 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Filter;
-import android.widget.Filterable;
 import android.widget.TextView;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -74,7 +73,6 @@ public class MainActivity extends AppCompatActivity {
         layoutManager.setOrientation(LinearLayoutManager.VERTICAL);
         mRecyclerView.setLayoutManager(layoutManager);
         mRecycleAdapter = new MyRecycleAdapter(this.list);
-        Log.d("test", this.list.toString());
         mRecyclerView.setAdapter(mRecycleAdapter);
 
         // 確認是否取得使用者權限，進行手機DB讀取
@@ -90,6 +88,7 @@ public class MainActivity extends AppCompatActivity {
                 public void run() {
                     Log.d("test", "doInBackground 3");
                     initdate();
+                    mRecycleAdapter.setData(list);
                     handler.post(new Runnable() {
                         @Override
                         public void run() {
@@ -114,6 +113,7 @@ public class MainActivity extends AppCompatActivity {
                         public void run() {
                             Log.d("test", "doInBackground 2");
                             initdate();
+                            mRecycleAdapter.setData(list);
                             handler.post(new Runnable() {
                                 @Override
                                 public void run() {
@@ -135,58 +135,33 @@ public class MainActivity extends AppCompatActivity {
 
 
     // Use RecyclerView to list contacts
-    public class MyRecycleAdapter extends RecyclerView.Adapter<MyRecycleAdapter.ViewHolder> implements Filterable {
-        private List<Map<String, String>> mArrayList;
-        private List<Map<String, String>> mFilteredList;
+    public class MyRecycleAdapter extends RecyclerView.Adapter<MyRecycleAdapter.ViewHolder> {
+        private List<Map<String,String>> mArrayList;
+        private List<Map<String,String>> mFilteredList = new ArrayList<>();
 
-        public void setData(List<Map<String, String>> datalists) {
-            this.mArrayList = datalists;
-            this.mFilteredList = datalists;
-            mRecycleAdapter.notifyDataSetChanged();
-        }
-
-        public MyRecycleAdapter(List<Map<String, String>> arrayList) {
-            Log.d("test", arrayList.toString());
+        public MyRecycleAdapter(List<Map<String,String>> arrayList) {
             mArrayList = arrayList;
-            mFilteredList = arrayList;
+            mFilteredList.addAll(arrayList);
         }
 
-        @Override
-        public Filter getFilter() {
-            return new Filter() {
-                @Override
-                protected FilterResults performFiltering(CharSequence charSequence) {
-                    String charString = charSequence.toString();
-                    Log.d("test", "charString = " + charString);
-                    if (charString.isEmpty()) {
-                        Log.d("test", "111111111111");
-                        mFilteredList = mArrayList;
-                    } else {
-                        Log.d("test", "2222222222");
-                        List<Map<String, String>> filteredList = new ArrayList<>();
-                        Log.d("test", "33333333");
-                        for (Map<String, String> contacts : mArrayList) {
-                            Log.d("test", "444444");
-                            if (contacts.get(contacts).contains(charString)) {
-                                Log.d("test", "55555");
-                                filteredList.add(contacts);
-                                Log.d("test", "666666");
-                            }
-                        }
-                        mFilteredList = filteredList;
+        public void setData(List<Map<String,String>> dataList) {
+            mFilteredList.addAll(dataList);
+        }
+
+        // 進行篩選
+        public void doFilter(String text) {
+            // 之前有做setData，所以無論如何都要先把list清空
+            mFilteredList.clear();
+            if(!text.isEmpty()) {
+                for (Map<String, String> contacts : mArrayList) {
+                    if (contacts.get("name").toLowerCase().contains(text) || contacts.get("phoneNumber").contains(text)) {
+                        mFilteredList.add(contacts);
                     }
-
-                    FilterResults filterResults = new FilterResults();
-                    filterResults.values = mFilteredList;
-                    return filterResults;
                 }
-
-                @Override
-                protected void publishResults(CharSequence charSequence, FilterResults filterResults) {
-                    mFilteredList = (List<Map<String, String>>) filterResults.values;
-                    mRecycleAdapter.notifyDataSetChanged();
-                }
-            };
+            } else {
+                mFilteredList.addAll(mArrayList);
+            }
+            mRecycleAdapter.notifyDataSetChanged();
         }
 
         public class ViewHolder extends RecyclerView.ViewHolder {
@@ -217,14 +192,13 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onBindViewHolder(ViewHolder holder, int position) {
-            holder.mNameView.setText(list.get(position).get("name"));
-            holder.mPhoneNumberView.setText(list.get(position).get("phoneNumber"));
+            holder.mNameView.setText(mFilteredList.get(position).get("name"));
+            holder.mPhoneNumberView.setText(mFilteredList.get(position).get("phoneNumber"));
         }
 
         @Override
         public int getItemCount() {
-//            Log.d("test", "list.size() = " + list.size());
-            return list.size();
+            return mFilteredList.size();
         }
 
 
@@ -252,11 +226,19 @@ public class MainActivity extends AppCompatActivity {
             map.put("name", name);
             map.put("phoneNumber", phoneNumber);
             list.add(map);
+            Collections.sort(list, mapComparator);
         }
         if (cursor != null) {
             cursor.close();
         }
     }
+
+    // 將DB資料進行排序
+    public Comparator<Map<String, String>> mapComparator = new Comparator<Map<String, String>>() {
+        public int compare(Map<String, String> m1, Map<String, String> m2) {
+            return m1.get("name").compareTo(m2.get("name"));
+        }
+    };
 
 
     // To notice DB data has changed
@@ -312,16 +294,16 @@ public class MainActivity extends AppCompatActivity {
         Log.d("test", "onDestroy !");
     }
 
+
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
-
         getMenuInflater().inflate(R.menu.menu_main, menu);
-
         MenuItem search = menu.findItem(R.id.search);
         SearchView searchView = (SearchView) search.getActionView();
         search(searchView);
         return true;
     }
+
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
@@ -329,19 +311,19 @@ public class MainActivity extends AppCompatActivity {
         return super.onOptionsItemSelected(item);
     }
 
-    private void search(SearchView searchView) {
 
+    private void search(SearchView searchView) {
         searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
             @Override
             public boolean onQueryTextSubmit(String query) {
-
                 return false;
             }
 
             @Override
             public boolean onQueryTextChange(String newText) {
-
-                if (mRecycleAdapter != null) mRecycleAdapter.getFilter().filter(newText);
+                if (mRecycleAdapter != null) {
+                    mRecycleAdapter.doFilter(newText);
+                }
                 return true;
             }
         });
